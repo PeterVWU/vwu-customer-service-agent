@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "vwu-customer-service-agent",
+  "account_id": "fba218ecd7eee5c433d49dc3515a0af0",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-06-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CustomerSupportAgent",
+        "class_name": "CustomerSupportAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CustomerSupportAgent"]
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "faq-embedding-index"
+    }
+  ],
+  "services": [
+    {
+      "binding": "ZOHO_OAUTH_WORKER",
+      "service": "zoho-oath-worker"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "MAGENTO_API_URL": "https://vapewholesaleusa.com",
+    "ZOHO_DESK_URL": "https://desk.zoho.com",
+    "ZOHO_ORG_ID": "729742506",
+    "ZOHO_DEPARTMENT_ID": "152404000000006907",
+    "ZOHO_CONTACT_ID": "152404000058553001",
+    "WORKERS_AI_CHAT_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+    "WORKERS_AI_FAST_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
+    "WORKERS_AI_ESCALATION_MODEL": "@cf/openai/gpt-oss-120b",
+    "WORKERS_AI_EMBEDDING_MODEL": "@cf/baai/bge-base-en-v1.5",
+    "ALLOWED_ORIGIN": "https://vapewholesaleusa.com"
+  }
+}

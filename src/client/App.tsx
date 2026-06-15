@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AgentClient } from "agents/client";
 
 type Role = "user" | "assistant";
 
@@ -35,12 +36,16 @@ export function App() {
   const [status, setStatus] = useState<"connecting" | "ready" | "closed">("connecting");
   const [typing, setTyping] = useState(false);
   const [error, setError] = useState("");
-  const socketRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<AgentClient | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/agents/CustomerSupportAgent/${sessionId}`);
+    const socket = new AgentClient({
+      host: window.location.host,
+      protocol: window.location.protocol === "https:" ? "wss" : "ws",
+      agent: "CustomerSupportAgent",
+      name: sessionId,
+    });
     socketRef.current = socket;
 
     socket.addEventListener("open", () => {

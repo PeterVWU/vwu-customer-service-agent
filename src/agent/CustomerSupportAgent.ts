@@ -54,6 +54,16 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
     });
   }
 
+  async healthCheck() {
+    return {
+      ok: true,
+      agent: "CustomerSupportAgent",
+      model: this.env.WORKERS_AI_CHAT_MODEL,
+      messages: this.state.messages.length,
+      updatedAt: this.state.updatedAt,
+    };
+  }
+
   async onMessage(connection: Connection, rawMessage: string) {
     let event: ClientMessage;
     try {

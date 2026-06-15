@@ -1,4 +1,4 @@
-import { routeAgentRequest } from "agents";
+import { getAgentByName, routeAgentRequest } from "agents";
 import { CustomerSupportAgent } from "./agent/CustomerSupportAgent";
 import type { Env } from "./types";
 
@@ -29,6 +29,14 @@ export default {
         service: "customer-service-agent",
         model: env.WORKERS_AI_CHAT_MODEL,
       });
+    }
+
+    if (url.pathname === "/internal/agent-smoke") {
+      const agent = await getAgentByName(
+        env.CustomerSupportAgent as unknown as DurableObjectNamespace<CustomerSupportAgent>,
+        "deployment-smoke",
+      );
+      return Response.json(await agent.healthCheck());
     }
 
     const agentResponse = await routeAgentRequest(request, env);

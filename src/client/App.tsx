@@ -10,7 +10,7 @@ interface ChatMessage {
   createdAt: number;
 }
 
-type PendingAction = "collect_order_number" | "collect_email" | null;
+type PendingAction = "collect_order_number" | "clarify_faq" | "collect_email" | null;
 
 type ServerMessage =
   | { type: "state"; messages: ChatMessage[]; pendingAction: PendingAction }
@@ -156,6 +156,7 @@ export function App() {
 
 function placeholderFor(pendingAction: PendingAction) {
   if (pendingAction === "collect_order_number") return "Enter your order number...";
+  if (pendingAction === "clarify_faq") return "Add a little more detail...";
   if (pendingAction === "collect_email") return "Enter your email address...";
   return "Ask about an order, shipping, returns, or support...";
 }

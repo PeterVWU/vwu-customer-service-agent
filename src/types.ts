@@ -28,7 +28,7 @@ export interface ChatMessage {
   createdAt: number;
 }
 
-export type PendingAction = "collect_order_number" | "collect_email" | null;
+export type PendingAction = "collect_order_number" | "clarify_faq" | "collect_email" | null;
 
 export interface SupportState {
   messages: ChatMessage[];
@@ -57,6 +57,7 @@ export interface OrderDetails {
   orderNumber: string;
   status: string;
   trackingNumbers: string[];
+  error?: string;
 }
 
 export interface FaqResult {

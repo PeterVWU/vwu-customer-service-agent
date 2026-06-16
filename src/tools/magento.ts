@@ -15,31 +15,46 @@ export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<
       "searchCriteria[filterGroups][0][filters][0][condition_type]": "eq",
     }).toString();
 
-  const orderResponse = await fetch(ordersUrl, {
-    headers: {
-      Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
-      Accept: "application/json",
-    },
-  });
+  try {
+    const orderResponse = await fetch(ordersUrl, {
+      headers: {
+        Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
+        Accept: "application/json",
+      },
+    });
 
-  if (!orderResponse.ok) {
-    throw new Error(`Magento order lookup failed: ${orderResponse.status}`);
+    if (!orderResponse.ok) {
+      return {
+        orderNumber: cleanOrderNumber,
+        status: "",
+        trackingNumbers: [],
+        error: `Magento order lookup failed with status ${orderResponse.status}.`,
+      };
+    }
+
+    const orderData = (await orderResponse.json()) as {
+      items?: Array<{ entity_id: number | string; increment_id: string; status: string }>;
+    };
+    const order = orderData.items?.[0];
+    if (!order) {
+      return { orderNumber: cleanOrderNumber, status: "", trackingNumbers: [] };
+    }
+
+    const trackingNumbers = await getTrackingNumbers(env, String(order.entity_id));
+    return {
+      orderNumber: order.increment_id,
+      status: order.status,
+      trackingNumbers,
+    };
+  } catch (error) {
+    console.error("Magento order lookup failed", error);
+    return {
+      orderNumber: cleanOrderNumber,
+      status: "",
+      trackingNumbers: [],
+      error: "Magento order lookup failed before a response was returned.",
+    };
   }
-
-  const orderData = (await orderResponse.json()) as {
-    items?: Array<{ entity_id: number | string; increment_id: string; status: string }>;
-  };
-  const order = orderData.items?.[0];
-  if (!order) {
-    return { orderNumber: cleanOrderNumber, status: "", trackingNumbers: [] };
-  }
-
-  const trackingNumbers = await getTrackingNumbers(env, String(order.entity_id));
-  return {
-    orderNumber: order.increment_id,
-    status: order.status,
-    trackingNumbers,
-  };
 }
 
 async function getTrackingNumbers(env: Env, orderId: string): Promise<string[]> {

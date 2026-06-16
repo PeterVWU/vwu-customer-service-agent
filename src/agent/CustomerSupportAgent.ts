@@ -177,9 +177,8 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
       return this.answerTicket(email);
     }
 
-    const faq = await searchFaq(this.env, content);
+    const faq = await this.answerFaq(content);
     if (faq.answer) {
-      await this.logToolEvent("searchFaq", { query: content }, faq);
       return {
         content: await this.polishReply(content, `FAQ answer: ${faq.answer}`),
         intent: "faq",
@@ -187,13 +186,20 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
       };
     }
 
+    if (this.state.pendingAction === "clarify_faq") {
+      if (email) return this.answerTicket(email);
+
+      return {
+        content: "I still could not find a clear answer for that. Please send your email address and I will create a support ticket for our team.",
+        intent: "ticket",
+        pendingAction: "collect_email",
+      };
+    }
+
     return {
-      content: await this.polishReply(
-        content,
-        "No FAQ match was found. Ask one clarifying question or offer to create a support ticket.",
-      ),
+      content: "Could you share a little more detail so I can check the right policy for you?",
       intent: "other",
-      pendingAction: null,
+      pendingAction: "clarify_faq",
     };
   }
 
@@ -202,15 +208,31 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
     if (/(order|tracking|shipment|shipped|delivery|where.*package|status)/.test(lower)) {
       return "order_status";
     }
-    if (/(ticket|support|agent|human|complaint|problem|issue|wrong|broken|missing|refund|return|cancel)/.test(lower)) {
+    if (/(ticket|support|agent|human|complaint|problem|issue|wrong|broken|missing)/.test(lower)) {
       return "ticket";
     }
     return "faq";
   }
 
+  private async answerFaq(content: string) {
+    const faq = await searchFaq(this.env, content);
+    await this.logToolEvent("searchFaq", { query: content }, faq);
+    return faq;
+  }
+
   private async answerOrderStatus(orderNumber: string) {
     const result = await lookupOrderStatus(this.env, orderNumber);
     await this.logToolEvent("getOrderStatus", { orderNumber }, result);
+
+    if (result.error) {
+      return {
+        content:
+          "I could not access the order system to check that order right now. Please send your email address and I will create a support ticket for our team to look it up.",
+        intent: "order_status" as const,
+        pendingAction: "collect_email" as const,
+        orderNumber,
+      };
+    }
 
     const toolSummary = result.status
       ? `Order ${result.orderNumber} status is ${result.status}. Tracking numbers: ${
@@ -263,10 +285,10 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
         ],
         max_tokens: 180,
       } as never);
-      return extractAiText(response) || toolContext;
+      return cleanAssistantReply(extractAiText(response) || toolContext);
     } catch (error) {
       console.error("Workers AI response failed", error);
-      return toolContext;
+      return cleanAssistantReply(toolContext);
     }
   }
 
@@ -295,6 +317,13 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
       VALUES (${crypto.randomUUID()}, ${name}, ${JSON.stringify(input)}, ${JSON.stringify(output)}, ${Date.now()})
     `;
   }
+}
+
+function cleanAssistantReply(content: string): string {
+  return content
+    .replace(/^FAQ answer:\s*/i, "")
+    .replace(/^No FAQ match was found\.\s*/i, "")
+    .trim();
 }
 
 function extractAiText(response: unknown): string {

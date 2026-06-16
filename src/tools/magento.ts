@@ -19,6 +19,7 @@ export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<
     const orderResponse = await fetch(ordersUrl, {
       headers: {
         Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
+        "Content-Type": "application/json",
         Accept: "application/json",
       },
     });
@@ -69,6 +70,7 @@ async function getTrackingNumbers(env: Env, orderId: string): Promise<string[]> 
   const shipmentResponse = await fetch(shipmentsUrl, {
     headers: {
       Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
+      "Content-Type": "application/json",
       Accept: "application/json",
     },
   });

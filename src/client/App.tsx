@@ -110,14 +110,14 @@ export function App() {
     <main className="shell">
       <section className="chat-panel" aria-label="Customer support chat">
         <header className="chat-header">
-          <div>
-            <p className="eyebrow">Vape Wholesale USA</p>
+          <div className="brand-title">
+            <img src="/cslogo.jpg" alt="" className="brand-logo" />
             <h1>Customer Support</h1>
           </div>
           <div className="header-actions">
             <span className={`status ${status}`}>{status}</span>
             <button className="ghost-button" onClick={resetChat} type="button">
-              New Chat
+              Clear
             </button>
           </div>
         </header>
@@ -130,7 +130,7 @@ export function App() {
           ))}
           {typing && (
             <article className="message assistant">
-              <p>Checking...</p>
+              <p>Typing...</p>
             </article>
           )}
           <div ref={scrollRef} />
@@ -145,8 +145,12 @@ export function App() {
             placeholder={placeholderFor(pendingAction)}
             disabled={status !== "ready"}
           />
-          <button disabled={status !== "ready" || !input.trim()} type="submit">
-            Send
+          <button
+            aria-label="Send message"
+            disabled={status !== "ready" || !input.trim()}
+            type="submit"
+          >
+            <span aria-hidden="true" className="send-icon" />
           </button>
         </form>
       </section>

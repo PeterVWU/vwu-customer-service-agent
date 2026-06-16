@@ -5,6 +5,7 @@ export interface Env {
   CustomerSupportAgent: DurableObjectNamespace;
   MAGENTO_API_URL: string;
   MAGENTO_API_TOKEN: string;
+  VWU_AGENT_AUTH_SECRET: string;
   ZOHO_DESK_URL: string;
   ZOHO_ORG_ID: string;
   ZOHO_DEPARTMENT_ID: string;

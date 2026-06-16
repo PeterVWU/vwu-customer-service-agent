@@ -6,6 +6,14 @@ const MAGENTO_HEADERS = {
   "User-Agent": "OAuth gem v0.5.8",
 };
 
+function magentoHeaders(env: Env): HeadersInit {
+  return {
+    ...MAGENTO_HEADERS,
+    Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
+    "x-vwu-agent-auth": env.VWU_AGENT_AUTH_SECRET,
+  };
+}
+
 export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<OrderDetails> {
   const cleanOrderNumber = orderNumber.trim();
   if (!cleanOrderNumber) {
@@ -23,10 +31,7 @@ export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<
 
   try {
     const orderResponse = await fetch(ordersUrl, {
-      headers: {
-        ...MAGENTO_HEADERS,
-        Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
-      },
+      headers: magentoHeaders(env),
     });
 
     if (!orderResponse.ok) {
@@ -73,10 +78,7 @@ async function getTrackingNumbers(env: Env, orderId: string): Promise<string[]> 
     }).toString();
 
   const shipmentResponse = await fetch(shipmentsUrl, {
-    headers: {
-      ...MAGENTO_HEADERS,
-      Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
-    },
+    headers: magentoHeaders(env),
   });
 
   if (!shipmentResponse.ok) return [];

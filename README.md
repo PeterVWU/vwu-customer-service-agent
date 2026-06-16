@@ -158,11 +158,13 @@ Suggested smoke tests:
 
 Based on the old agent's retained KV conversations from May 17, 2026 to June 16, 2026:
 
-- Old volume: about `1,099` conversations/month.
-- Average customer turns: about `3.2` per conversation.
+- Old volume: `1,101` retained conversations.
+- Average customer turns: `3.14` per conversation.
 - Estimated Workers AI inference: usually below `$1/month` at that volume.
 - Durable Object storage: expected to remain inside the included `5 GB-month` for a long time at current volume.
 - Vectorize storage/query volume is currently far below included usage.
+
+See `docs/old-agent-conversation-analysis.md` for the topic analysis and customer-support learnings from the retained old-agent history.
 
 The new agent does not yet enforce automatic conversation retention cleanup. Add TTL or a scheduled cleanup before storing long-term production history indefinitely.
 

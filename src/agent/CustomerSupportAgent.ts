@@ -8,6 +8,7 @@ import type {
   Env,
   PendingAction,
   ServerMessage,
+  SupportOutcome,
   SupportIntent,
   SupportState,
 } from "../types";
@@ -19,6 +20,7 @@ Keep replies under 60 words unless the user asks for detail.`;
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const ORDER_RE = /\b(?:order\s*#?\s*)?([0-9]{6,12})\b/i;
+const SHORT_DETAIL_RE = /^(agent|human|support|help|ticket|representative|person|call me|email me)$/i;
 
 export class CustomerSupportAgent extends Agent<Env, SupportState> {
   initialState: SupportState = {
@@ -103,6 +105,9 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
         messages: [...this.state.messages, assistantMessage],
         pendingAction: response.pendingAction,
         lastIntent: response.intent,
+        issueType: response.issueType ?? this.state.issueType,
+        issueSummary: response.issueSummary ?? this.state.issueSummary,
+        lastOutcome: response.outcome,
         customerEmail: response.customerEmail ?? this.state.customerEmail,
         orderNumber: response.orderNumber ?? this.state.orderNumber,
         zohoTicketId: response.zohoTicketId ?? this.state.zohoTicketId,
@@ -124,6 +129,9 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
     content: string;
     intent: SupportIntent;
     pendingAction: PendingAction;
+    outcome: SupportOutcome;
+    issueType?: SupportIntent;
+    issueSummary?: string;
     customerEmail?: string;
     orderNumber?: string;
     zohoTicketId?: string;
@@ -132,11 +140,16 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
     const orderNumber = content.match(ORDER_RE)?.[1];
 
     if (this.state.pendingAction === "collect_order_number") {
+      if (email && this.state.issueSummary) {
+        return this.answerTicket(email, this.state.issueType || "order_status", this.state.issueSummary, orderNumber ?? this.state.orderNumber);
+      }
+
       if (!orderNumber) {
         return {
           content: "Please send your order number so I can check the status.",
           intent: "order_status",
           pendingAction: "collect_order_number",
+          outcome: "needs_order_number",
         };
       }
       return this.answerOrderStatus(orderNumber);
@@ -146,11 +159,38 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
       if (!email) {
         return {
           content: "Please send the email address we should use for the support ticket.",
-          intent: "ticket",
+          intent: this.state.issueType || "ticket",
           pendingAction: "collect_email",
+          outcome: "needs_email",
         };
       }
-      return this.answerTicket(email);
+      return this.answerTicket(email, this.state.issueType || "ticket", this.state.issueSummary, orderNumber ?? this.state.orderNumber);
+    }
+
+    if (this.state.pendingAction === "collect_issue_detail") {
+      const issueType = this.state.issueType || "human_support";
+      if (!hasUsefulIssueDetail(content)) {
+        return {
+          content: "Please describe what happened so our team has enough detail to help.",
+          intent: issueType,
+          pendingAction: "collect_issue_detail",
+          outcome: "needs_issue_detail",
+          issueType,
+        };
+      }
+
+      const issueSummary = summarizeIssue(content);
+      if (email) return this.answerTicket(email, issueType, issueSummary, orderNumber ?? this.state.orderNumber);
+
+      return {
+        content: "Thanks. Please send your email address and I will create a support ticket with those details.",
+        intent: issueType,
+        pendingAction: "collect_email",
+        outcome: "needs_email",
+        issueType,
+        issueSummary,
+        orderNumber: orderNumber ?? this.state.orderNumber,
+      };
     }
 
     const intent = this.detectIntent(content);
@@ -161,20 +201,36 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
           content: "Please send your order number and I will check the latest status.",
           intent,
           pendingAction: "collect_order_number",
+          outcome: "needs_order_number",
         };
       }
       return this.answerOrderStatus(orderNumber);
     }
 
-    if (intent === "ticket") {
-      if (!email) {
+    if (isEscalationIntent(intent)) {
+      if (!hasUsefulIssueDetail(content)) {
         return {
-          content: "Please send your email address and I will create a support ticket.",
+          content: "Please describe the issue so I can include the right details for our support team.",
           intent,
-          pendingAction: "collect_email",
+          pendingAction: "collect_issue_detail",
+          outcome: "needs_issue_detail",
+          issueType: intent,
         };
       }
-      return this.answerTicket(email);
+
+      const issueSummary = summarizeIssue(content);
+      if (!email) {
+        return {
+          content: "Please send your email address and I will create a support ticket with those details.",
+          intent,
+          pendingAction: "collect_email",
+          outcome: "needs_email",
+          issueType: intent,
+          issueSummary,
+          orderNumber: orderNumber ?? this.state.orderNumber,
+        };
+      }
+      return this.answerTicket(email, intent, issueSummary, orderNumber ?? this.state.orderNumber);
     }
 
     const faq = await this.answerFaq(content);
@@ -183,46 +239,80 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
         content: await this.polishReply(content, `FAQ answer: ${faq.answer}`),
         intent: "faq",
         pendingAction: null,
+        outcome: "answered",
       };
     }
 
     if (this.state.pendingAction === "clarify_faq") {
-      if (email) return this.answerTicket(email);
+      const issueSummary = summarizeIssue(content);
+      if (email) return this.answerTicket(email, this.state.issueType || "other", issueSummary, orderNumber ?? this.state.orderNumber);
 
       return {
-        content: "I still could not find a clear answer for that. Please send your email address and I will create a support ticket for our team.",
-        intent: "ticket",
+        content: "I still could not find a clear answer. Please send your email address and I will create a support ticket for our team.",
+        intent: this.state.issueType || "other",
         pendingAction: "collect_email",
+        outcome: "needs_email",
+        issueType: this.state.issueType || "other",
+        issueSummary,
       };
     }
 
     return {
       content: "Could you share a little more detail so I can check the right policy for you?",
-      intent: "other",
+      intent,
       pendingAction: "clarify_faq",
+      outcome: "clarifying",
+      issueType: intent === "faq" ? "other" : intent,
     };
   }
 
   private detectIntent(content: string): SupportIntent {
     const lower = content.toLowerCase();
-    if (/(order|tracking|shipment|shipped|delivery|where.*package|status)/.test(lower)) {
+    if (/(order|tracking|shipment|shipped|shipping|delivery|delivered|where.*package|status|processing|package)/.test(lower)) {
       return "order_status";
     }
-    if (/(ticket|support|agent|human|complaint|problem|issue|wrong|broken|missing)/.test(lower)) {
-      return "ticket";
+    if (/(wrong|missing|damaged|broken|returned|return label|received someone|not correct|shorted|defective)/.test(lower)) {
+      return "post_order_issue";
+    }
+    if (/(refund|return|exchange|cancel|cancellation)/.test(lower)) {
+      return "returns_refunds";
+    }
+    if (/(payment|paid|charge|charged|declined|checkout|card|billing|transaction)/.test(lower)) {
+      return "payment_checkout";
+    }
+    if (/(account|login|log in|password|verification|verify|id|wholesale|license|approved)/.test(lower)) {
+      return "account_verification";
+    }
+    if (/(reward|points|discount|coupon|promo|store credit)/.test(lower)) {
+      return "rewards_credit";
+    }
+    if (/(ticket|support|agent|human|representative|person|complaint|problem|issue|call|phone|email)/.test(lower)) {
+      return "human_support";
     }
     return "faq";
   }
 
   private async answerFaq(content: string) {
     const faq = await searchFaq(this.env, content);
-    await this.logToolEvent("searchFaq", { query: content }, faq);
+    await this.logToolEvent(
+      "searchFaq",
+      { query: content, intent: "faq", outcome: faq.answer ? "answered" : "not_found", score: faq.score },
+      faq,
+    );
     return faq;
   }
 
   private async answerOrderStatus(orderNumber: string) {
     const result = await lookupOrderStatus(this.env, orderNumber);
-    await this.logToolEvent("getOrderStatus", { orderNumber }, result);
+    await this.logToolEvent(
+      "getOrderStatus",
+      {
+        orderNumber,
+        intent: "order_status",
+        outcome: result.error ? "tool_failed" : result.status ? "answered" : "not_found",
+      },
+      result,
+    );
 
     if (result.error) {
       return {
@@ -230,48 +320,98 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
           "I could not access the order system to check that order right now. Please send your email address and I will create a support ticket for our team to look it up.",
         intent: "order_status" as const,
         pendingAction: "collect_email" as const,
+        outcome: "tool_failed" as const,
+        issueType: "order_status" as const,
+        issueSummary: `Order lookup failed for ${orderNumber}.`,
         orderNumber,
       };
     }
 
-    const toolSummary = result.status
-      ? `Order ${result.orderNumber} status is ${result.status}. Tracking numbers: ${
-          result.trackingNumbers.length ? result.trackingNumbers.join(", ") : "none found"
-        }.`
-      : `No order was found for ${orderNumber}.`;
+    if (!result.status) {
+      return {
+        content:
+          "I could not find that order number. Please check the number and send it again, or send your email address and I will create a support ticket.",
+        intent: "order_status" as const,
+        pendingAction: "collect_order_number" as const,
+        outcome: "not_found" as const,
+        issueType: "order_status" as const,
+        issueSummary: `Customer asked about order ${orderNumber}, but no order was found.`,
+        orderNumber,
+      };
+    }
+
+    const statusExplanation = explainOrderStatus(result.status, result.trackingNumbers);
+    const trackingText = result.trackingNumbers.length
+      ? `Tracking: ${result.trackingNumbers.join(", ")}.`
+      : "No tracking number is available yet.";
+    const escalationText = result.trackingNumbers.length
+      ? "If the carrier has not updated for a while or the package was delivered but not received, send your email and I can create a ticket."
+      : "If it has been processing longer than expected, send your email and I can create a ticket for our team to check it.";
+
+    const toolSummary = `Order ${result.orderNumber}: ${statusExplanation} ${trackingText} ${escalationText}`;
 
     return {
       content: await this.polishReply(`Order status for ${orderNumber}`, toolSummary),
       intent: "order_status" as const,
       pendingAction: null,
+      outcome: "answered" as const,
       orderNumber,
     };
   }
 
-  private async answerTicket(email: string) {
+  private async answerTicket(
+    email: string,
+    issueType: SupportIntent = "ticket",
+    issueSummary?: string,
+    orderNumber?: string,
+  ) {
+    const ticketOrderNumber = orderNumber || this.state.orderNumber;
+
     if (this.state.zohoTicketId) {
       return {
-        content: `You already have an open ticket from this chat: ${this.state.zohoTicketId}.`,
-        intent: "ticket" as const,
+        content: `You already have an open ticket from this chat: ${this.state.zohoTicketId}. Our support team will use it to review your request and follow up by email.`,
+        intent: issueType,
         pendingAction: null,
+        outcome: "ticket_existing" as const,
+        issueType,
+        issueSummary,
         customerEmail: email,
+        orderNumber: ticketOrderNumber,
         zohoTicketId: this.state.zohoTicketId,
       };
     }
 
+    const summary = issueSummary || summarizeConversation(this.state.messages);
     const result = await createZohoTicket(this.env, {
       email,
       messages: this.state.messages,
+      issueType,
+      orderNumber: ticketOrderNumber,
+      summary,
     });
-    await this.logToolEvent("createTicket", { email }, result);
+    await this.logToolEvent(
+      "createTicket",
+      {
+        email,
+        issueType,
+        orderNumber: ticketOrderNumber,
+        summary,
+        outcome: result.ticketId ? "ticket_created" : "ticket_failed",
+      },
+      result,
+    );
 
     return {
       content: result.ticketId
-        ? `I created a support ticket for ${email}. Ticket ID: ${result.ticketId}.`
+        ? `I created a support ticket for ${email}. Ticket ID: ${result.ticketId}. Our team will review the details and follow up by email.`
         : result.message,
-      intent: "ticket" as const,
+      intent: issueType,
       pendingAction: null,
+      outcome: result.ticketId ? ("ticket_created" as const) : ("ticket_failed" as const),
+      issueType,
+      issueSummary: summary,
       customerEmail: email,
+      orderNumber: ticketOrderNumber,
       zohoTicketId: result.ticketId,
     };
   }
@@ -324,6 +464,52 @@ function cleanAssistantReply(content: string): string {
     .replace(/^FAQ answer:\s*/i, "")
     .replace(/^No FAQ match was found\.\s*/i, "")
     .trim();
+}
+
+function isEscalationIntent(intent: SupportIntent): boolean {
+  return (
+    intent === "post_order_issue" ||
+    intent === "returns_refunds" ||
+    intent === "payment_checkout" ||
+    intent === "account_verification" ||
+    intent === "human_support"
+  );
+}
+
+function hasUsefulIssueDetail(content: string): boolean {
+  const normalized = content.trim();
+  return normalized.length >= 12 && !SHORT_DETAIL_RE.test(normalized);
+}
+
+function summarizeIssue(content: string): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function summarizeConversation(messages: Array<{ role: string; content: string }>): string {
+  const firstCustomerMessage = messages.find((message) => message.role === "user")?.content;
+  return firstCustomerMessage ? summarizeIssue(firstCustomerMessage) : "Customer requested support from chat.";
+}
+
+function explainOrderStatus(status: string, trackingNumbers: string[]): string {
+  const normalized = status.toLowerCase().replace(/[_-]+/g, " ");
+
+  if (trackingNumbers.length) {
+    return `The order status is ${status}, and a tracking number is available.`;
+  }
+
+  if (/(processing|pending|new|payment review)/.test(normalized)) {
+    return `The order is currently ${status}, which usually means it is still being prepared or reviewed before shipment.`;
+  }
+
+  if (/(complete|shipped|closed)/.test(normalized)) {
+    return `The order status is ${status}.`;
+  }
+
+  if (/(canceled|cancelled|hold|fraud)/.test(normalized)) {
+    return `The order status is ${status}, so our support team may need to review it.`;
+  }
+
+  return `The order status is ${status}.`;
 }
 
 function extractAiText(response: unknown): string {

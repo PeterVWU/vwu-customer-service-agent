@@ -29,19 +29,49 @@ export interface ChatMessage {
   createdAt: number;
 }
 
-export type PendingAction = "collect_order_number" | "clarify_faq" | "collect_email" | null;
+export type PendingAction =
+  | "collect_order_number"
+  | "clarify_faq"
+  | "collect_email"
+  | "collect_issue_detail"
+  | null;
 
 export interface SupportState {
   messages: ChatMessage[];
   pendingAction: PendingAction;
   customerEmail?: string;
   orderNumber?: string;
+  issueType?: SupportIntent;
+  issueSummary?: string;
+  lastOutcome?: SupportOutcome;
   zohoTicketId?: string;
   lastIntent?: SupportIntent;
   updatedAt: number;
 }
 
-export type SupportIntent = "faq" | "order_status" | "ticket" | "other";
+export type SupportIntent =
+  | "faq"
+  | "order_status"
+  | "post_order_issue"
+  | "returns_refunds"
+  | "payment_checkout"
+  | "account_verification"
+  | "rewards_credit"
+  | "human_support"
+  | "ticket"
+  | "other";
+
+export type SupportOutcome =
+  | "answered"
+  | "needs_order_number"
+  | "needs_email"
+  | "needs_issue_detail"
+  | "ticket_created"
+  | "ticket_existing"
+  | "ticket_failed"
+  | "not_found"
+  | "tool_failed"
+  | "clarifying";
 
 export interface ClientMessage {
   type: "chat" | "reset";
@@ -70,4 +100,10 @@ export interface FaqResult {
 export interface TicketResult {
   ticketId?: string;
   message: string;
+}
+
+export interface TicketContext {
+  issueType?: SupportIntent;
+  orderNumber?: string;
+  summary?: string;
 }

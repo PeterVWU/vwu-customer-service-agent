@@ -1,5 +1,11 @@
 import type { Env, OrderDetails } from "../types";
 
+const MAGENTO_HEADERS = {
+  Accept: "application/json",
+  "Content-Type": "application/json",
+  "User-Agent": "OAuth gem v0.5.8",
+};
+
 export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<OrderDetails> {
   const cleanOrderNumber = orderNumber.trim();
   if (!cleanOrderNumber) {
@@ -18,9 +24,8 @@ export async function lookupOrderStatus(env: Env, orderNumber: string): Promise<
   try {
     const orderResponse = await fetch(ordersUrl, {
       headers: {
+        ...MAGENTO_HEADERS,
         Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
       },
     });
 
@@ -69,9 +74,8 @@ async function getTrackingNumbers(env: Env, orderId: string): Promise<string[]> 
 
   const shipmentResponse = await fetch(shipmentsUrl, {
     headers: {
+      ...MAGENTO_HEADERS,
       Authorization: `Bearer ${env.MAGENTO_API_TOKEN}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
     },
   });
 

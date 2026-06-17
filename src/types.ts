@@ -1,6 +1,7 @@
 export interface Env {
   AI: Ai;
   ASSETS: Fetcher;
+  ANALYTICS_DB: D1Database;
   VECTORIZE: Vectorize;
   CustomerSupportAgent: DurableObjectNamespace;
   MAGENTO_API_URL: string;

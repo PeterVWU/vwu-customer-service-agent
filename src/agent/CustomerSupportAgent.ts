@@ -2,6 +2,7 @@ import { Agent, type Connection } from "agents";
 import { lookupOrderStatus } from "../tools/magento";
 import { searchFaq } from "../tools/faq";
 import { createZohoTicket } from "../tools/zoho";
+import { recordAnalyticsToolEvent, recordConversationTurn } from "../analytics/conversationAnalytics";
 import type {
   ChatMessage,
   ClientMessage,
@@ -97,6 +98,7 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
     this.broadcastJson({ type: "message", message: userMessage, pendingAction: this.state.pendingAction });
 
     this.broadcastJson({ type: "typing", value: true });
+    const turnStartedAt = Date.now();
     try {
       const response = await this.handleSupportTurn(content);
       const assistantMessage = this.makeMessage("assistant", response.content);
@@ -113,6 +115,7 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
         zohoTicketId: response.zohoTicketId ?? this.state.zohoTicketId,
         updatedAt: Date.now(),
       });
+      await this.recordTurnAnalytics(userMessage, assistantMessage, response, Date.now() - turnStartedAt);
       this.broadcastJson({ type: "message", message: assistantMessage, pendingAction: this.state.pendingAction });
     } catch (error) {
       console.error("Support turn failed", error);
@@ -452,10 +455,57 @@ export class CustomerSupportAgent extends Agent<Env, SupportState> {
   }
 
   private async logToolEvent(name: string, input: unknown, output: unknown) {
+    const createdAt = Date.now();
     await this.sql`
       INSERT INTO tool_events (id, name, input, output, created_at)
-      VALUES (${crypto.randomUUID()}, ${name}, ${JSON.stringify(input)}, ${JSON.stringify(output)}, ${Date.now()})
+      VALUES (${crypto.randomUUID()}, ${name}, ${JSON.stringify(input)}, ${JSON.stringify(output)}, ${createdAt})
     `;
+    try {
+      await recordAnalyticsToolEvent(this.env, {
+        sessionName: this.name,
+        name,
+        input,
+        output,
+        createdAt,
+      });
+    } catch (error) {
+      console.error("Analytics tool event logging failed", error);
+    }
+  }
+
+  private async recordTurnAnalytics(
+    userMessage: ChatMessage,
+    assistantMessage: ChatMessage,
+    response: {
+      intent: SupportIntent;
+      pendingAction: PendingAction;
+      outcome: SupportOutcome;
+      issueType?: SupportIntent;
+      issueSummary?: string;
+      customerEmail?: string;
+      orderNumber?: string;
+      zohoTicketId?: string;
+    },
+    latencyMs: number,
+  ) {
+    try {
+      await recordConversationTurn(this.env, {
+        sessionName: this.name,
+        userMessage,
+        assistantMessage,
+        intent: response.intent,
+        outcome: response.outcome,
+        pendingAction: response.pendingAction,
+        issueType: response.issueType,
+        issueSummary: response.issueSummary,
+        customerEmail: response.customerEmail,
+        orderNumber: response.orderNumber,
+        zohoTicketId: response.zohoTicketId,
+        latencyMs,
+      });
+    } catch (error) {
+      console.error("Conversation analytics logging failed", error);
+    }
   }
 }
 

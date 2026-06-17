@@ -16,6 +16,14 @@
   "ai": {
     "binding": "AI"
   },
+  "d1_databases": [
+    {
+      "binding": "ANALYTICS_DB",
+      "database_name": "vwu_customer_service_agent_analytics",
+      "database_id": "a8bbb3a2-b1ba-4b6d-85c9-8b6a1b6342b0",
+      "migrations_dir": "migrations"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

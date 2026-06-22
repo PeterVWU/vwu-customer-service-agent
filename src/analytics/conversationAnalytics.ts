@@ -150,19 +150,21 @@ export async function recordAnalyticsToolEvent(env: Env, analytics: ToolAnalytic
   if (!env.ANALYTICS_DB) return;
 
   const conversationId = await conversationIdFor(analytics.sessionName);
-  await env.ANALYTICS_DB.prepare(
-    `INSERT INTO analytics_tool_events (id, conversation_id, name, input_json, output_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
+  const sessionHash = await sha256Hex(analytics.sessionName);
+  await env.ANALYTICS_DB.batch([
+    upsertConversationStatement(env, conversationId, sessionHash, analytics.createdAt),
+    env.ANALYTICS_DB.prepare(
+      `INSERT INTO analytics_tool_events (id, conversation_id, name, input_json, output_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(
       crypto.randomUUID(),
       conversationId,
       analytics.name,
       redactSensitiveJson(analytics.input),
       redactSensitiveJson(analytics.output),
       analytics.createdAt,
-    )
-    .run();
+    ),
+  ]);
 }
 
 export async function getAnalyticsSummary(env: Env, sinceMs: number): Promise<Record<string, unknown>> {
@@ -278,6 +280,19 @@ function insertMessageStatement(
     pendingAction,
     message.createdAt,
   );
+}
+
+function upsertConversationStatement(
+  env: Env,
+  conversationId: string,
+  sessionHash: string,
+  createdAt: number,
+): D1PreparedStatement {
+  return env.ANALYTICS_DB.prepare(
+    `INSERT INTO conversations (id, session_hash, agent_name, first_seen_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET last_seen_at = MAX(conversations.last_seen_at, excluded.last_seen_at)`,
+  ).bind(conversationId, sessionHash, "CustomerSupportAgent", createdAt, createdAt);
 }
 
 async function conversationIdFor(sessionName: string): Promise<string> {
